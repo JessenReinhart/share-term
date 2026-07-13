@@ -33,6 +33,9 @@ function defaultShell(): string {
 export class PtySource implements LogSource {
   private proc?: pty.IPty;
 
+  /** Report the live PTY size so the phone can render at the true width. */
+  onSize?: (cols: number, rows: number) => void;
+
   constructor(private readonly opts: PtyOptions = {}) {}
 
   async start(onLine: (line: string) => void): Promise<void> {
@@ -52,6 +55,9 @@ export class PtySource implements LogSource {
       cwd: process.cwd(),
       env: process.env,
     });
+
+    // Tell the phone the real terminal width so wide TUIs don't wrap/break.
+    this.onSize?.(cols, rows);
 
     this.proc.onData((data: string) => {
       // Mirror to the laptop so the user still sees their live shell.
@@ -77,10 +83,10 @@ export class PtySource implements LogSource {
         this.proc?.write(chunk.toString("utf8"));
       });
       process.stdout.on("resize", () => {
-        this.proc?.resize(
-          process.stdout.columns ?? 80,
-          process.stdout.rows ?? 24,
-        );
+        const c = process.stdout.columns ?? 80;
+        const r = process.stdout.rows ?? 24;
+        this.proc?.resize(c, r);
+        this.onSize?.(c, r);
       });
     }
   }

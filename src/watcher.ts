@@ -12,6 +12,9 @@ export interface LogSource {
   start(onLine: (line: string) => void): Promise<void>;
   /** Stop watching / reading and release resources. */
   stop(): void;
+  /** Optional: report the source's terminal size (PTY mode) so the phone
+   *  can render at the true width instead of wrapping wide TUIs. */
+  onSize?: (cols: number, rows: number) => void;
 }
 
 const CHUNK_SIZE = 64 * 1024; // 64 KiB read window for the initial tail.

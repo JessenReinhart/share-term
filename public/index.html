@@ -164,12 +164,36 @@
       term.loadAddon(fit);
       term.open(document.getElementById("terminal"));
 
+      // When the laptop PTY reports its real width, we render at that many
+      // columns and scale the font down so the whole width fits the screen
+      // with no wrapping (wide TUIs would otherwise break box-drawing art).
+      let targetCols = 0;
+
       function fitTerminal() {
         try {
-          fit.fit();
+          if (targetCols > 0) {
+            fitTerminalToWidth(targetCols);
+          } else {
+            fit.fit();
+          }
         } catch (_) {
           /* container not measurable yet */
         }
+      }
+
+      function fitTerminalToWidth(cols) {
+        // 1. Fit at the current font size to learn how many columns the screen
+        //    can hold — this is our baseline for the width/font-size ratio.
+        fit.fit();
+        const base = term.options.fontSize || 12;
+        const dims = fit.proposeDimensions();
+        const baseCols = dims && dims.cols ? dims.cols : cols;
+        // 2. Scale the font so `cols` columns fill the screen width exactly.
+        let next = base * (baseCols / cols) * 0.97;
+        next = Math.max(4, Math.min(28, next));
+        term.options.fontSize = next;
+        // 3. Fit again: rows now fill the available height, no horizontal wrap.
+        fit.fit();
       }
       fitTerminal();
       window.addEventListener("resize", fitTerminal);
@@ -221,6 +245,9 @@
           }
           if (msg.type === "meta") {
             fileEl.textContent = msg.file || "";
+          } else if (msg.type === "size") {
+            targetCols = msg.cols || 0;
+            fitTerminal();
           } else if (msg.type === "line") {
             term.write(msg.text);
           }

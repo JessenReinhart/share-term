@@ -145,6 +145,14 @@ async function main(): Promise<void> {
   // terminal emulator renders them instantly; other sources are line-based,
   // so we re-append the newline they were split on.
   const appendNewline = !source.raw;
+
+  // Live terminals report their true size so the phone can render wide TUIs
+  // at full width (scaled down) instead of wrapping and breaking box-drawing.
+  if (source.takesTerminal) {
+    source.instance.onSize = (cols, rows) =>
+      server.broadcast({ type: "size", cols, rows });
+  }
+
   await source.instance.start((chunk) =>
     server.broadcast({
       type: "line",
