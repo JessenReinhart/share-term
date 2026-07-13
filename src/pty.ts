@@ -8,6 +8,9 @@ export interface PtyOptions {
   shell?: string;
   /** Extra args passed to the shell (e.g. `["-c", "echo hi"]`). */
   args?: string[];
+  /** Command to run inside the PTY instead of an interactive shell
+   *  (e.g. `npm run dev`). Spawned as `<shell> -c "<command>"`. */
+  command?: string;
 }
 
 function defaultShell(): string {
@@ -34,7 +37,11 @@ export class PtySource implements LogSource {
 
   async start(onLine: (line: string) => void): Promise<void> {
     const shell = this.opts.shell ?? defaultShell();
-    const args = this.opts.args ?? [];
+    const args = this.opts.command
+      ? process.platform === "win32"
+        ? ["/c", this.opts.command]
+        : ["-c", this.opts.command]
+      : this.opts.args ?? [];
     const cols = process.stdout.columns ?? 80;
     const rows = process.stdout.rows ?? 24;
 

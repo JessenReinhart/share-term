@@ -61,7 +61,13 @@ with `tsx`, no build step).
 ## Usage
 
 ```bash
-# Share a live terminal — picks "Live terminal (PTY)" by default (no tmux needed)
+# Share a specific command's output directly (no picker needed):
+share-term sprint                 # runs `sprint` in a PTY and streams it
+share-term npm run dev            # or any command
+# A bare name that matches an npm script in package.json is auto-expanded:
+share-term sprint                 # → expands to `npm run sprint` if "sprint" is a script
+
+# Interactive picker (default when no command is given):
 share-term
 # → type to search; choose "Live terminal (PTY)", a tmux pane, a log file, or Pipe Mode
 # → type in the terminal; your phone sees it live. `exit` stops sharing.

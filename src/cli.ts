@@ -10,6 +10,7 @@
  */
 
 import path from "node:path";
+import fs from "node:fs";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
@@ -55,12 +56,44 @@ function restoreTerminal(): void {
 
 const PIPE_VALUE = "__pipe__";
 
+/**
+ * If extra non-flag arguments are given (e.g. `share-term sprint`), treat them
+ * as a command to run and share. A bare script name that matches an npm script
+ * in the cwd is expanded to `npm run <script>` for convenience.
+ */
+async function resolveCommandArg(): Promise<string | null> {
+  const positional = process.argv.slice(2).filter((a) => !a.startsWith("-"));
+  if (positional.length === 0) return null;
+  const raw = positional.join(" ");
+  if (positional.length === 1) {
+    try {
+      const pkg = JSON.parse(
+        await fs.promises.readFile(path.join(process.cwd(), "package.json"), "utf8"),
+      );
+      if (pkg.scripts && pkg.scripts[positional[0]]) return `npm run ${positional[0]}`;
+    } catch {
+      /* no package.json / not JSON — run the arg verbatim */
+    }
+  }
+  return raw;
+}
+
 async function main(): Promise<void> {
   disableInputModes();
   p.intro(pc.bgBlue(pc.white(" share-term ")) + pc.dim("  v1.0.0"));
 
   const cwd = process.cwd();
-  const source = await chooseSource(cwd);
+
+  // `share-term <command>` → share that command's output directly (no picker).
+  const command = await resolveCommandArg();
+  const source = command
+    ? {
+        instance: new PtySource({ command }),
+        label: command,
+        takesTerminal: true,
+        raw: true,
+      }
+    : await chooseSource(cwd);
 
   // Pick an available port (falls back from 8080 if busy).
   const port = await getPort({ port: 8080 });
