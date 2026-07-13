@@ -1,0 +1,47 @@
+{
+  "name": "share-term",
+  "version": "1.0.0",
+  "description": "Stream your terminal logs to your phone by scanning a QR code. Zero config, real-time, ANSI-aware.",
+  "type": "module",
+  "bin": {
+    "share-term": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "public"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/cli.js',0o755)\"",
+    "start": "node dist/cli.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "cli",
+    "terminal",
+    "logs",
+    "websocket",
+    "qr",
+    "tui",
+    "pwa"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "chokidar": "^3.6.0",
+    "get-port": "^7.1.0",
+    "picocolors": "^1.0.1",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
