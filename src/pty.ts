@@ -43,6 +43,8 @@ export class PtySource implements LogSource {
       name: "xterm-256color",
       cols,
       rows,
+      cwd: process.cwd(),
+      env: process.env,
     });
 
     this.proc.onData((data: string) => {
@@ -64,6 +66,7 @@ export class PtySource implements LogSource {
     // When the shell exits, tear everything down.
     this.proc.onExit(() => {
       this.stop();
+      process.stdout.write("\x1b[?25h\x1b[0m"); // show cursor, reset attrs
       process.exit(0);
     });
 

@@ -10,6 +10,7 @@
  */
 
 import path from "node:path";
+import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 import * as p from "@clack/prompts";
@@ -70,9 +71,14 @@ async function main(): Promise<void> {
   renderQr(url);
   console.log();
 
-  // For a live PTY shell we take over the terminal *after* the QR is shown, so
-  // the QR stays visible above the shared shell. Other sources can start now.
+  // For a live PTY shell we take over the terminal *after* the QR is shown — a
+  // spawned shell clears the screen on start, so we wait for the user to scan
+  // first, otherwise the QR would be wiped instantly.
   if (source.takesTerminal) {
+    p.log.info(
+      pc.dim("Scan the QR, then press Enter to start the shared terminal."),
+    );
+    await waitForEnter();
     p.log.info(
       pc.dim("Type in this terminal — your phone sees it live. `exit` to stop."),
     );
@@ -93,6 +99,17 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+}
+
+/** Block until the user presses Enter (used to let them scan the QR first). */
+function waitForEnter(): Promise<void> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin });
+    rl.question("", () => {
+      rl.close();
+      resolve();
+    });
+  });
 }
 
 /**
