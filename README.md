@@ -37,7 +37,12 @@ $ share-term
   terminal, not just a colorized log.
 - **ANSI color rendering** on the phone (real SGR, 256-color aware).
 - **`tail -f` style watching** via `chokidar` — streams only appended bytes (low CPU).
-- **Phone-side**: Clear button, live connection indicator, auto-reconnect.
+- **Phone-side**: draggable floating **Clear** button, a tiny live connection
+  indicator (dot), auto-reconnect, and pinch-to-zoom/pan. No navbar — the whole
+  screen is terminal.
+- **Wide-TUI aware**: live PTYs report their real width, so the phone renders at
+  the true column count (font scaled down to fit) instead of wrapping and breaking
+  box-drawing art.
 - **Graceful handling** of phone disconnects, file rotation, and port conflicts.
 
 > The only third-party runtime dependency for live terminal sharing is
@@ -86,7 +91,9 @@ Then:
 
 1. Make sure your phone is on the **same Wi-Fi** as your laptop.
 2. Scan the QR code (or open the printed `http://<lan-ip>:<port>` URL).
-3. Watch logs appear live. Use the pills to filter, toggle auto-scroll, or clear.
+ 3. Watch output appear live. **Tap** the floating Clear button to wipe the
+    screen, **drag** it anywhere it's in the way, and **pinch** to zoom in on
+    small text. The little dot in the corner shows connection status.
 
 Press `Ctrl+C` in the terminal to stop the server.
 
@@ -105,28 +112,36 @@ Press `Ctrl+C` in the terminal to stop the server.
    │ StdinSource      │      │ (broadcast lines) │      │ (IP + QR render)   │
    └──────────────────┘      └─────────┬────────┘      └─────────────────────┘
                                        │  ws://<lan-ip>:<port>
-                                       ▼
-                            ┌──────────────────────────┐
-                            │ public/index.html (PWA)  │
-                            │ ANSI parser + filters    │
-                            └──────────────────────────┘
+                                        ▼
+                             ┌──────────────────────────┐
+                             │ public/index.html (PWA)  │
+                             │ xterm.js terminal emulator│
+                             └──────────────────────────┘
 ```
 
 | Module                | Responsibility                                              |
 | --------------------- | ----------------------------------------------------------- |
 | `src/cli.ts`          | TUI wizard, source selection, server/QR bootstrapping.      |
-| `src/watcher.ts`      | `FileTailer` (`tail -f`), `StdinSource`, log-file discovery.|
+| `src/watcher.ts`      | `FileTailer` (`tail -f`), `StdinSource`, `PtySource`,       |
+|                       | log-file discovery, `LogSource` interface.                 |
+| `src/pty.ts`          | `PtySource` — spawns a shared shell via `node-pty`, streams |
+|                       | raw output, reports terminal size.                          |
+| `src/sessions.ts`     | `tmux` pane detection and `TmuxSessionSource`.              |
 | `src/server.ts`       | HTTP static server + WebSocket broadcast + heartbeat.       |
 | `src/network.ts`      | Detect the real local IPv4 address.                         |
 | `src/qr.ts`           | Render the connection URL as a terminal QR code.            |
-| `public/index.html`   | The mobile receiver: ANSI→HTML, filters, auto-scroll.      |
+| `public/index.html`   | The mobile receiver: xterm.js terminal emulator, draggable  |
+|                       | Clear FAB, status dot, pinch-zoom.                          |
 
 ## Protocol
 
 The WebSocket sends JSON messages:
 
 - `{ "type": "meta", "file": "<label>" }` — sent on connect, names the source.
-- `{ "type": "line", "text": "<raw log line with ANSI codes>" }` — one per new line.
+- `{ "type": "line", "text": "<raw output with ANSI codes>" }` — PTY sources send
+  raw chunks (prompts have no newline); line sources append a trailing `\n`.
+- `{ "type": "size", "cols": <n>, "rows": <n> }` — sent by live PTY sources so the
+  phone can render at the true terminal width (used to scale the font).
 
 ## Requirements
 
