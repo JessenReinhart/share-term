@@ -22,7 +22,10 @@ $ share-term
 
 ## Features
 
-- **TUI wizard** (built on `@clack/prompts`) to pick a `.log` file or enter Pipe Mode.
+- **Active terminal session detection** — finds running `tmux` panes and lets you
+  share a *live* terminal (with colors), not just a static log file.
+- **Searchable TUI picker** (built on `@clack/prompts` + `@inquirer/prompts`) —
+  type to filter the list of sessions/files to share.
 - **Automatic LAN IP detection** — uses your real Wi-Fi IP, not `127.0.0.1`.
 - **QR code in the terminal** (no app install needed on the laptop).
 - **Zero-config PWA receiver** — a single responsive HTML file served from the CLI.
@@ -31,10 +34,14 @@ $ share-term
 - **Phone-side UX**: auto-scroll toggle, clear button, `INFO`/`WARN`/`ERROR` filter pills.
 - **Graceful handling** of phone disconnects, file rotation, and port conflicts.
 
+> **Sharing a live terminal requires `tmux`** (native on macOS/Linux, or via WSL /
+> Git-Bash on Windows). If `tmux` isn't installed — or you aren't inside a session —
+> `share-term` falls back to scanning `*.log` files, then to Pipe Mode.
+
 ## Install (from source / for development)
 
 ```bash
-git clone <your-fork>
+git clone https://github.com/JessenReinhart/share-term.git
 cd share-term
 npm install
 npm run build
@@ -48,7 +55,11 @@ with `tsx`, no build step).
 ## Usage
 
 ```bash
-# Stream a log file (interactive picker)
+# Share a live terminal session — type to search the picker
+tmux               # (optional) start a session first
+share-term         # → searchable list of active tmux panes
+
+# No tmux? It falls back to *.log files, then to Pipe Mode:
 share-term
 
 # Stream whatever is piped in (auto-detected when stdin is not a TTY)

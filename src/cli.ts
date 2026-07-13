@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * share-term — stream your terminal logs to your phone via QR code.
+ * share-term — stream your terminal to your phone via QR code.
  *
  * Flow:
- *   1. Scan cwd for *.log files (node_modules etc. excluded).
- *   2. Show a TUI wizard (clack) to pick a file or "Pipe Mode".
+ *   1. Detect active terminal sessions (tmux panes); fall back to *.log files.
+ *   2. Show a searchable TUI to pick a session / file or "Pipe Mode".
  *   3. Start an HTTP + WebSocket server, detect LAN IP, render a QR code.
  *   4. Tail the selected source and broadcast new lines to connected phones.
  */
@@ -15,6 +15,7 @@ import process from "node:process";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import getPort from "get-port";
+import { search } from "@inquirer/prompts";
 
 import { getLocalIp } from "./network.js";
 import { renderQr } from "./qr.js";
@@ -25,6 +26,7 @@ import {
   findLogFiles,
   type LogSource,
 } from "./watcher.js";
+import { TmuxSessionSource, findTerminalSessions } from "./sessions.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -85,7 +87,7 @@ async function main(): Promise<void> {
 
 /**
  * Decide what to stream. If stdin is piped we skip the menu and go straight
- * to Pipe Mode; otherwise present the interactive TUI.
+ * to Pipe Mode; otherwise present the searchable TUI.
  */
 async function chooseSource(
   cwd: string,
@@ -97,43 +99,82 @@ async function chooseSource(
   }
 
   const spinner = p.spinner();
-  spinner.start("Scanning for log files…");
-  const logs = await findLogFiles(cwd);
-  spinner.stop(`Found ${logs.length} log file(s)`);
+  spinner.start("Looking for active terminal sessions…");
+  const sessions = await findTerminalSessions();
+  // Only scan log files when no terminal sessions are available.
+  const logs = sessions.length ? [] : await findLogFiles(cwd);
+  spinner.stop(
+    sessions.length
+      ? `Found ${sessions.length} active terminal session(s)`
+      : `No terminal sessions — found ${logs.length} log file(s)`,
+  );
 
-  const options: Array<{ value: string; label: string; hint?: string }> =
-    logs.map((f) => ({
-      value: f,
-      label: path.relative(cwd, f),
-    }));
+  const items: Array<{
+    value: string;
+    name: string;
+    description?: string;
+  }> = [
+    ...sessions.map((s) => ({
+      value: `tmux:${s.target}`,
+      name: s.label,
+      description: s.hint,
+    })),
+    {
+      value: PIPE_VALUE,
+      name: "Manual Input (Pipe Mode)",
+      description: "stream from stdin, e.g. `npm run dev | share-term`",
+    },
+    ...logs.map((f) => ({
+      value: `log:${f}`,
+      name: path.relative(cwd, f),
+      description: "log file",
+    })),
+  ];
 
-  options.unshift({
-    value: PIPE_VALUE,
-    label: pc.cyan("Manual Input (Pipe Mode)"),
-    hint: "stream from stdin, e.g. `npm run dev | share-term`",
-  });
-
-  if (options.length === 1) {
-    p.log.warn("No .log files found. Falling back to Pipe Mode.");
+  if (items.length === 1) {
+    p.log.warn("No terminal sessions or log files found. Using Pipe Mode.");
     return { instance: new StdinSource(), label: "stdin (pipe)" };
   }
 
-  const selected = await p.select({
-    message: "What would you like to stream to your phone?",
-    options,
-    initialValue: options[1]?.value,
-  });
-
-  if (p.isCancel(selected)) {
-    p.cancel("Aborted.");
-    process.exit(0);
+  let selected: string;
+  try {
+    selected = await search({
+      message: sessions.length
+        ? "Search an active terminal session to share:"
+        : "Search a source to share:",
+      pageSize: 12,
+      source: async (input) => {
+        const q = (input ?? "").toLowerCase();
+        if (!q) return items;
+        return items.filter(
+          (i) =>
+            i.name.toLowerCase().includes(q) ||
+            (i.description ?? "").toLowerCase().includes(q),
+        );
+      },
+    });
+  } catch (err) {
+    if ((err as { name?: string })?.name === "ExitPromptError") {
+      p.cancel("Aborted.");
+      process.exit(0);
+    }
+    throw err;
   }
 
   if (selected === PIPE_VALUE) {
     return { instance: new StdinSource(), label: "stdin (pipe)" };
   }
 
-  const file = selected as string;
+  if (selected.startsWith("tmux:")) {
+    const target = selected.slice("tmux:".length);
+    const session = sessions.find((s) => s.target === target);
+    return {
+      instance: new TmuxSessionSource(target),
+      label: `terminal ${session?.label ?? target}`,
+    };
+  }
+
+  const file = selected.slice("log:".length);
   return { instance: new FileTailer(file), label: path.relative(cwd, file) };
 }
 
