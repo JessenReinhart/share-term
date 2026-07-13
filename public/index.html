@@ -309,7 +309,13 @@
       function ansiToHtml(input) {
         let html = "";
         let fg = null, bg = null, bold = false, dim = false, ul = false;
-        const esc = /\x1b\[([0-9;]*)m/g;
+
+        // Capture: 1) SGR color codes we render, 2) other CSI (cursor moves,
+        // erases, mode sets…), 3) OSC (title setting), 4) misc lone escapes.
+        // Groups 2–4 are dropped so a live shell's control sequences don't
+        // leak into the rendered text.
+        const re =
+          /(\x1b\[[0-9;]*m)|(\x1b\[[0-9;?]*[0-9A-Za-z])|(\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))|(\x1b[()][AB0-2]|\x1b[=>]|\x1b.)/g;
         let last = 0, m;
 
         const flush = (end) => {
@@ -323,23 +329,27 @@
           html += style ? '<span style="' + style + '">' + text + "</span>" : text;
         };
 
-        while ((m = esc.exec(input))) {
+        while ((m = re.exec(input))) {
           flush(m.index);
-          last = esc.lastIndex;
-          const raw = m[1] ? m[1].split(";") : ["0"];
-          for (const codeStr of raw) {
-            const code = codeStr === "" ? 0 : Number(codeStr);
-            if (code === 0) { fg = bg = null; bold = dim = ul = false; }
-            else if (code === 1) bold = true;
-            else if (code === 2) dim = true;
-            else if (code === 4) ul = true;
-            else if (code === 39) fg = null;
-            else if (code === 49) bg = null;
-            else if (ANSI_COLORS[code]) {
-              if ((code >= 40 && code < 50) || code >= 100) bg = ANSI_COLORS[code];
-              else fg = ANSI_COLORS[code];
+          last = re.lastIndex;
+          if (m[1]) {
+            const raw = m[1].slice(2, -1); // drop leading \x1b[ and trailing m
+            const codes = raw ? raw.split(";") : ["0"];
+            for (const codeStr of codes) {
+              const code = codeStr === "" ? 0 : Number(codeStr);
+              if (code === 0) { fg = bg = null; bold = dim = ul = false; }
+              else if (code === 1) bold = true;
+              else if (code === 2) dim = true;
+              else if (code === 4) ul = true;
+              else if (code === 39) fg = null;
+              else if (code === 49) bg = null;
+              else if (ANSI_COLORS[code]) {
+                if ((code >= 40 && code < 50) || code >= 100) bg = ANSI_COLORS[code];
+                else fg = ANSI_COLORS[code];
+              }
             }
           }
+          // Non-SGR groups (2–4): intentionally dropped.
         }
         flush(input.length);
         return html;
