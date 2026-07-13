@@ -33,9 +33,30 @@ import { PtySource } from "./pty.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
 
+/**
+ * Disable terminal input-reporting modes (mouse tracking, bracketed paste)
+ * that a previously-aborted session may have left enabled. Leftover modes
+ * inject escape sequences into prompts, making text input unusable.
+ */
+function disableInputModes(): void {
+  if (!process.stdout.isTTY) return;
+  process.stdout.write(
+    "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l",
+  );
+}
+
+/** Fully restore the terminal after we take it over (cursor, modes, reset). */
+function restoreTerminal(): void {
+  if (!process.stdout.isTTY) return;
+  process.stdout.write(
+    "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?25h\x1b[0m",
+  );
+}
+
 const PIPE_VALUE = "__pipe__";
 
 async function main(): Promise<void> {
+  disableInputModes();
   p.intro(pc.bgBlue(pc.white(" share-term ")) + pc.dim("  v1.0.0"));
 
   const cwd = process.cwd();
@@ -93,6 +114,7 @@ async function main(): Promise<void> {
 
   const shutdown = (signal: string) => {
     p.outro(`${pc.yellow("Received " + signal)} — stopping share-term.`);
+    restoreTerminal();
     source.instance.stop();
     server.stop();
     process.exit(0);

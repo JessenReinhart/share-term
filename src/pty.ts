@@ -66,7 +66,6 @@ export class PtySource implements LogSource {
     // When the shell exits, tear everything down.
     this.proc.onExit(() => {
       this.stop();
-      process.stdout.write("\x1b[?25h\x1b[0m"); // show cursor, reset attrs
       process.exit(0);
     });
 
@@ -87,6 +86,17 @@ export class PtySource implements LogSource {
   }
 
   stop(): void {
+    // Turn off any input-reporting modes and restore the cursor so the
+    // terminal isn't left dirty after the shared shell exits.
+    if (process.stdout.isTTY) {
+      try {
+        process.stdout.write(
+          "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?25h\x1b[0m",
+        );
+      } catch {
+        /* ignore */
+      }
+    }
     if (process.stdin.isTTY) {
       try {
         process.stdin.setRawMode(false);
