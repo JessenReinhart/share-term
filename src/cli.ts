@@ -27,6 +27,7 @@ import {
   type LogSource,
 } from "./watcher.js";
 import { TmuxSessionSource, findTerminalSessions } from "./sessions.js";
+import { PtySource } from "./pty.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -61,11 +62,6 @@ async function main(): Promise<void> {
     `Streaming ${pc.cyan(source.label)} → ${pc.bold(String(server.clientCount))} client(s)`,
   );
 
-  // Begin producing lines and pipe them into the broadcast layer.
-  await source.instance.start((line) =>
-    server.broadcast({ type: "line", text: line }),
-  );
-
   p.note(
     `${pc.cyan(url)}\n\nScan the QR code below with your phone camera.`,
     "Server ready",
@@ -73,7 +69,21 @@ async function main(): Promise<void> {
   console.log();
   renderQr(url);
   console.log();
-  p.log.info(pc.dim("Press Ctrl+C to stop streaming."));
+
+  // For a live PTY shell we take over the terminal *after* the QR is shown, so
+  // the QR stays visible above the shared shell. Other sources can start now.
+  if (source.takesTerminal) {
+    p.log.info(
+      pc.dim("Type in this terminal — your phone sees it live. `exit` to stop."),
+    );
+  } else {
+    p.log.info(pc.dim("Press Ctrl+C to stop streaming."));
+  }
+
+  // Begin producing lines and pipe them into the broadcast layer.
+  await source.instance.start((line) =>
+    server.broadcast({ type: "line", text: line }),
+  );
 
   const shutdown = (signal: string) => {
     p.outro(`${pc.yellow("Received " + signal)} — stopping share-term.`);
@@ -91,7 +101,7 @@ async function main(): Promise<void> {
  */
 async function chooseSource(
   cwd: string,
-): Promise<{ instance: LogSource; label: string }> {
+): Promise<{ instance: LogSource; label: string; takesTerminal?: boolean }> {
   // Auto-detect piping: `some-command | share-term`
   if (!process.stdin.isTTY) {
     p.log.info("stdin is piped — entering Manual Input (Pipe) mode.");
@@ -114,6 +124,11 @@ async function chooseSource(
     name: string;
     description?: string;
   }> = [
+    {
+      value: "pty:new",
+      name: "Live terminal (PTY) — no tmux needed",
+      description: "spawn a shared shell right here",
+    },
     ...sessions.map((s) => ({
       value: `tmux:${s.target}`,
       name: s.label,
@@ -139,9 +154,7 @@ async function chooseSource(
   let selected: string;
   try {
     selected = await search({
-      message: sessions.length
-        ? "Search an active terminal session to share:"
-        : "Search a source to share:",
+      message: "Search a source to share:",
       pageSize: 12,
       source: async (input) => {
         const q = (input ?? "").toLowerCase();
@@ -159,6 +172,14 @@ async function chooseSource(
       process.exit(0);
     }
     throw err;
+  }
+
+  if (selected === "pty:new") {
+    return {
+      instance: new PtySource(),
+      label: "live terminal",
+      takesTerminal: true,
+    };
   }
 
   if (selected === PIPE_VALUE) {

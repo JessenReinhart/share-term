@@ -22,10 +22,13 @@ $ share-term
 
 ## Features
 
-- **Active terminal session detection** — finds running `tmux` panes and lets you
-  share a *live* terminal (with colors), not just a static log file.
+- **Live terminal sharing — no `tmux` required.** A built-in PTY source
+  (`node-pty`, using ConPTY on Windows / openpty on POSIX) spawns a shared shell
+  you type into; your phone sees it live with full ANSI colors.
+- **Attach to existing `tmux` sessions** (optional) — share a pane that's already
+  running instead of spawning a new shell.
 - **Searchable TUI picker** (built on `@clack/prompts` + `@inquirer/prompts`) —
-  type to filter the list of sessions/files to share.
+  type to filter the list of sources to share.
 - **Automatic LAN IP detection** — uses your real Wi-Fi IP, not `127.0.0.1`.
 - **QR code in the terminal** (no app install needed on the laptop).
 - **Zero-config PWA receiver** — a single responsive HTML file served from the CLI.
@@ -34,9 +37,9 @@ $ share-term
 - **Phone-side UX**: auto-scroll toggle, clear button, `INFO`/`WARN`/`ERROR` filter pills.
 - **Graceful handling** of phone disconnects, file rotation, and port conflicts.
 
-> **Sharing a live terminal requires `tmux`** (native on macOS/Linux, or via WSL /
-> Git-Bash on Windows). If `tmux` isn't installed — or you aren't inside a session —
-> `share-term` falls back to scanning `*.log` files, then to Pipe Mode.
+> The only third-party runtime dependency for live terminal sharing is
+> `node-pty` (bundled via `npm install`). `tmux` is optional — used only when you
+> want to attach to an *already running* tmux pane rather than spawn a fresh one.
 
 ## Install (from source / for development)
 
@@ -55,12 +58,14 @@ with `tsx`, no build step).
 ## Usage
 
 ```bash
-# Share a live terminal session — type to search the picker
-tmux               # (optional) start a session first
-share-term         # → searchable list of active tmux panes
-
-# No tmux? It falls back to *.log files, then to Pipe Mode:
+# Share a live terminal — picks "Live terminal (PTY)" by default (no tmux needed)
 share-term
+# → type to search; choose "Live terminal (PTY)", a tmux pane, a log file, or Pipe Mode
+# → type in the terminal; your phone sees it live. `exit` stops sharing.
+
+# Optional: attach to an existing tmux pane instead of a fresh shell
+tmux               # start a session first
+share-term         # → searchable list of active tmux panes
 
 # Stream whatever is piped in (auto-detected when stdin is not a TTY)
 npm run dev | share-term
