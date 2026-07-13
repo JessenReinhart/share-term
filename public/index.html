@@ -48,57 +48,51 @@
           env(safe-area-inset-bottom) env(safe-area-inset-left);
       }
 
-      header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 12px;
-        background: var(--bg-soft);
-        border-bottom: 1px solid var(--border);
-        flex: 0 0 auto;
-      }
-
-      .dot {
+      /* Tiny floating connection indicator (replaces the navbar). */
+      .status-dot {
+        position: fixed;
+        top: calc(env(safe-area-inset-top) + 8px);
+        left: calc(env(safe-area-inset-left) + 8px);
         width: 9px;
         height: 9px;
         border-radius: 50%;
         background: var(--muted);
         transition: background 0.3s;
+        z-index: 10;
+        pointer-events: none;
       }
-      .dot.online {
+      .status-dot.online {
         background: var(--ok);
       }
-      .dot.offline {
+      .status-dot.offline {
         background: var(--err);
       }
 
-      .title {
-        font-size: 14px;
-        font-weight: 700;
-        letter-spacing: 0.3px;
-      }
-      .file {
-        font-size: 11px;
-        color: var(--muted);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        flex: 1;
-      }
-
-      .btn {
-        font-size: 11px;
+      /* Draggable floating action button for "Clear". */
+      .fab {
+        position: fixed;
+        right: calc(env(safe-area-inset-right) + 14px);
+        bottom: calc(env(safe-area-inset-bottom) + 14px);
+        z-index: 10;
+        font-family: var(--font);
+        font-size: 12px;
         font-weight: 600;
-        padding: 5px 10px;
-        border-radius: 8px;
-        border: 1px solid var(--border);
-        background: transparent;
         color: var(--fg);
-        cursor: pointer;
+        background: rgba(17, 21, 31, 0.82);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 9px 14px;
+        cursor: grab;
         user-select: none;
+        -webkit-user-select: none;
+        backdrop-filter: blur(6px);
+        /* We handle drag ourselves; stop the browser from scrolling/zooming. */
+        touch-action: none;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
       }
-      .btn:active {
-        transform: scale(0.96);
+      .fab.dragging {
+        cursor: grabbing;
+        opacity: 0.92;
       }
 
       #terminal {
@@ -111,26 +105,6 @@
         height: 100%;
       }
 
-      /* Landscape phones are short — collapse the header to a thin status bar
-         (hide the title, tighten padding) so it stops eating vertical space. */
-      @media (orientation: landscape) {
-        header {
-          padding: 3px 10px;
-        }
-        .title {
-          display: none;
-        }
-        .file {
-          font-size: 10px;
-        }
-        .btn {
-          font-size: 10px;
-          padding: 3px 8px;
-        }
-        #terminal {
-          padding: 3px 6px 5px;
-        }
-      }
       /* Let the browser handle pinch-zoom / panning over the terminal instead
          of xterm swallowing all touch gestures (its viewport is touch-action:none
          by default, which blocks mobile zoom). */
@@ -144,15 +118,11 @@
   </head>
   <body>
     <div id="app">
-      <header>
-        <span id="dot" class="dot"></span>
-        <span class="title">share-term</span>
-        <span id="file" class="file"></span>
-        <button id="clear" class="btn">Clear</button>
-      </header>
-
       <div id="terminal"></div>
     </div>
+
+    <span id="dot" class="status-dot"></span>
+    <button id="fab" class="fab">Clear</button>
 
     <script src="/vendor/xterm.js"></script>
     <script src="/vendor/addon-fit.js"></script>
@@ -239,11 +209,63 @@
 
       // ---- DOM refs --------------------------------------------------------
       const dotEl = document.getElementById("dot");
-      const fileEl = document.getElementById("file");
-      const clearBtn = document.getElementById("clear");
+      const fab = document.getElementById("fab");
 
       // ---- Controls --------------------------------------------------------
-      clearBtn.addEventListener("click", () => term.clear());
+      // The FAB is both a "Clear" button and a draggable handle. A short tap
+      // clears the terminal; a drag (past a small threshold) just moves it so
+      // it never permanently blocks the view.
+      let fabDown = false;
+      let fabMoved = false;
+      let fabStartX = 0;
+      let fabStartY = 0;
+      let fabOffX = 0;
+      let fabOffY = 0;
+
+      fab.addEventListener("pointerdown", (e) => {
+        fabDown = true;
+        fabMoved = false;
+        fabStartX = e.clientX;
+        fabStartY = e.clientY;
+        const r = fab.getBoundingClientRect();
+        fabOffX = e.clientX - r.left;
+        fabOffY = e.clientY - r.top;
+        fab.setPointerCapture(e.pointerId);
+        fab.classList.add("dragging");
+      });
+
+      fab.addEventListener("pointermove", (e) => {
+        if (!fabDown) return;
+        if (
+          Math.abs(e.clientX - fabStartX) > 6 ||
+          Math.abs(e.clientY - fabStartY) > 6
+        ) {
+          fabMoved = true;
+        }
+        if (!fabMoved) return;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        let x = e.clientX - fabOffX;
+        let y = e.clientY - fabOffY;
+        x = Math.max(0, Math.min(w - fab.offsetWidth, x));
+        y = Math.max(0, Math.min(h - fab.offsetHeight, y));
+        fab.style.left = x + "px";
+        fab.style.top = y + "px";
+        fab.style.right = "auto";
+        fab.style.bottom = "auto";
+      });
+
+      function fabEnd(e) {
+        if (!fabDown) return;
+        fabDown = false;
+        try {
+          fab.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+        fab.classList.remove("dragging");
+        if (!fabMoved) term.clear();
+      }
+      fab.addEventListener("pointerup", fabEnd);
+      fab.addEventListener("pointercancel", fabEnd);
 
       // ---- WebSocket (with auto-reconnect) --------------------------------
       let ws = null;
@@ -274,7 +296,7 @@
             return;
           }
           if (msg.type === "meta") {
-            fileEl.textContent = msg.file || "";
+            // filename previously shown in the navbar; intentionally dropped.
           } else if (msg.type === "size") {
             targetCols = msg.cols || 0;
             fitTerminal();
