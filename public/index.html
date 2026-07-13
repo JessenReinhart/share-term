@@ -9,6 +9,7 @@
     <meta name="theme-color" content="#0b0e14" />
     <meta name="color-scheme" content="dark" />
     <title>share-term</title>
+    <link rel="stylesheet" href="/vendor/xterm.css" />
     <style>
       :root {
         --bg: #0b0e14;
@@ -16,10 +17,9 @@
         --border: #1f2733;
         --fg: #c8d0dc;
         --muted: #6b7686;
-        --accent: #56b6c2;
         --ok: #98c379;
-        --warn: #e5c07b;
         --err: #e06c75;
+        --accent: #56b6c2;
         --font: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
           "Liberation Mono", monospace;
       }
@@ -63,26 +63,13 @@
         height: 9px;
         border-radius: 50%;
         background: var(--muted);
-        box-shadow: 0 0 0 0 rgba(152, 195, 121, 0.5);
         transition: background 0.3s;
       }
       .dot.online {
         background: var(--ok);
-        animation: pulse 2s infinite;
       }
       .dot.offline {
         background: var(--err);
-      }
-      @keyframes pulse {
-        0% {
-          box-shadow: 0 0 0 0 rgba(152, 195, 121, 0.5);
-        }
-        70% {
-          box-shadow: 0 0 0 8px rgba(152, 195, 121, 0);
-        }
-        100% {
-          box-shadow: 0 0 0 0 rgba(152, 195, 121, 0);
-        }
       }
 
       .title {
@@ -96,53 +83,6 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        flex: 1;
-      }
-
-      .toolbar {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 10px;
-        background: var(--bg-soft);
-        border-bottom: 1px solid var(--border);
-        flex: 0 0 auto;
-        flex-wrap: wrap;
-      }
-
-      .pills {
-        display: flex;
-        gap: 6px;
-      }
-      .pill {
-        font-size: 11px;
-        font-weight: 700;
-        padding: 5px 10px;
-        border-radius: 999px;
-        border: 1px solid var(--border);
-        background: transparent;
-        color: var(--muted);
-        cursor: pointer;
-        user-select: none;
-      }
-      .pill.active {
-        color: #0b0e14;
-        border-color: transparent;
-      }
-      .pill[data-level="ALL"].active {
-        background: var(--accent);
-      }
-      .pill[data-level="INFO"].active {
-        background: var(--accent);
-      }
-      .pill[data-level="WARN"].active {
-        background: var(--warn);
-      }
-      .pill[data-level="ERROR"].active {
-        background: var(--err);
-      }
-
-      .spacer {
         flex: 1;
       }
 
@@ -160,92 +100,15 @@
       .btn:active {
         transform: scale(0.96);
       }
-      .toggle {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .switch {
-        position: relative;
-        width: 34px;
-        height: 18px;
-        border-radius: 999px;
-        background: var(--border);
-        transition: background 0.2s;
-        flex: 0 0 auto;
-      }
-      .switch.on {
-        background: var(--ok);
-      }
-      .switch::after {
-        content: "";
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        background: #fff;
-        transition: transform 0.2s;
-      }
-      .switch.on::after {
-        transform: translateX(16px);
-      }
 
-      #log {
+      #terminal {
         flex: 1 1 auto;
-        overflow-y: auto;
-        padding: 10px 12px 40px;
-        font-size: 12px;
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-break: break-word;
+        padding: 6px 8px 10px;
+        overflow: hidden;
       }
-      .line {
-        padding: 1px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
-      }
-      .line.lvl-error {
-        background: rgba(224, 108, 117, 0.08);
-      }
-      .line.lvl-warn {
-        background: rgba(229, 192, 123, 0.06);
-      }
-      .line.hidden {
-        display: none;
-      }
-
-      .status {
-        position: absolute;
-        bottom: 14px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(17, 21, 31, 0.95);
-        border: 1px solid var(--border);
-        color: var(--muted);
-        font-size: 11px;
-        padding: 6px 12px;
-        border-radius: 999px;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.3s;
-      }
-      .status.show {
-        opacity: 1;
-      }
-
-      .banner {
-        margin: auto;
-        text-align: center;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.6;
-        padding: 20px;
-      }
-      .banner code {
-        color: var(--accent);
+      /* xterm fills its container */
+      #terminal .xterm {
+        height: 100%;
       }
     </style>
   </head>
@@ -255,190 +118,78 @@
         <span id="dot" class="dot"></span>
         <span class="title">share-term</span>
         <span id="file" class="file"></span>
+        <button id="clear" class="btn">Clear</button>
       </header>
 
-      <div class="toolbar">
-        <div class="pills">
-          <span class="pill active" data-level="ALL">ALL</span>
-          <span class="pill" data-level="INFO">INFO</span>
-          <span class="pill" data-level="WARN">WARN</span>
-          <span class="pill" data-level="ERROR">ERROR</span>
-        </div>
-        <div class="spacer"></div>
-        <label class="toggle">
-          Auto-scroll
-          <span id="autoscroll" class="switch on"></span>
-        </label>
-        <button id="clear" class="btn">Clear</button>
-      </div>
-
-      <div id="log">
-        <div class="banner">
-          Waiting for logs…<br />Connect this phone to the same Wi-Fi as your
-          laptop, then scan the QR code shown in the terminal.
-        </div>
-      </div>
-
-      <div id="status" class="status"></div>
+      <div id="terminal"></div>
     </div>
 
+    <script src="/vendor/xterm.js"></script>
+    <script src="/vendor/addon-fit.js"></script>
     <script>
       "use strict";
 
-      // ---- ANSI → HTML -----------------------------------------------------
-      // Compact SGR (Select Graphic Rendition) parser covering the codes used
-      // by typical terminal loggers: colors, bold, dim, underline, reset.
-      const ANSI_COLORS = {
-        30: "#1e1e1e", 31: "#e06c75", 32: "#98c379", 33: "#e5c07b",
-        34: "#61afef", 35: "#c678dd", 36: "#56b6c2", 37: "#c8d0dc",
-        90: "#5c6370", 91: "#ef6f7b", 92: "#a3d98c", 93: "#ebd690",
-        94: "#72b3f0", 95: "#d485e8", 96: "#6cc4cf", 97: "#c8d0dc",
-        40: "#1e1e1e", 41: "#e06c75", 42: "#98c379", 43: "#e5c07b",
-        44: "#61afef", 45: "#c678dd", 46: "#56b6c2", 47: "#c8d0dc",
-        100: "#5c6370", 101: "#ef6f7b", 102: "#a3d98c", 103: "#ebd690",
-        104: "#72b3f0", 105: "#d485e8", 106: "#6cc4cf", 107: "#c8d0dc",
-      };
+      const term = new Terminal({
+        fontFamily:
+          'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+        fontSize: 12,
+        cursorBlink: true,
+        allowProposedApi: true,
+        theme: {
+          background: "#0b0e14",
+          foreground: "#c8d0dc",
+          cursor: "#c8d0dc",
+          cursorAccent: "#0b0e14",
+          selectionBackground: "#23304a",
+          black: "#1e1e1e",
+          red: "#e06c75",
+          green: "#98c379",
+          yellow: "#e5c07b",
+          blue: "#61afef",
+          magenta: "#c678dd",
+          cyan: "#56b6c2",
+          white: "#c8d0dc",
+          brightBlack: "#5c6370",
+          brightRed: "#ef6f7b",
+          brightGreen: "#a3d98c",
+          brightYellow: "#ebd690",
+          brightBlue: "#72b3f0",
+          brightMagenta: "#d485e8",
+          brightCyan: "#6cc4cf",
+          brightWhite: "#ffffff",
+        },
+      });
 
-      function escapeHtml(s) {
-        return s
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-      }
+      const fit = new FitAddon.FitAddon();
+      term.loadAddon(fit);
+      term.open(document.getElementById("terminal"));
 
-      function ansiToHtml(input) {
-        let html = "";
-        let fg = null, bg = null, bold = false, dim = false, ul = false;
-
-        // Capture: 1) SGR color codes we render, 2) other CSI (cursor moves,
-        // erases, mode sets…), 3) OSC (title setting), 4) misc lone escapes.
-        // Groups 2–4 are dropped so a live shell's control sequences don't
-        // leak into the rendered text.
-        const re =
-          /(\x1b\[[0-9;]*m)|(\x1b\[[0-9;?]*[0-9A-Za-z])|(\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))|(\x1b[()][AB0-2]|\x1b[=>]|\x1b.)/g;
-        let last = 0, m;
-
-        const flush = (end) => {
-          let style = "";
-          if (fg) style += "color:" + fg + ";";
-          if (bg) style += "background:" + bg + ";";
-          if (bold) style += "font-weight:bold;";
-          if (dim) style += "opacity:0.65;";
-          if (ul) style += "text-decoration:underline;";
-          const text = escapeHtml(input.slice(last, end));
-          html += style ? '<span style="' + style + '">' + text + "</span>" : text;
-        };
-
-        while ((m = re.exec(input))) {
-          flush(m.index);
-          last = re.lastIndex;
-          if (m[1]) {
-            const raw = m[1].slice(2, -1); // drop leading \x1b[ and trailing m
-            const codes = raw ? raw.split(";") : ["0"];
-            for (const codeStr of codes) {
-              const code = codeStr === "" ? 0 : Number(codeStr);
-              if (code === 0) { fg = bg = null; bold = dim = ul = false; }
-              else if (code === 1) bold = true;
-              else if (code === 2) dim = true;
-              else if (code === 4) ul = true;
-              else if (code === 39) fg = null;
-              else if (code === 49) bg = null;
-              else if (ANSI_COLORS[code]) {
-                if ((code >= 40 && code < 50) || code >= 100) bg = ANSI_COLORS[code];
-                else fg = ANSI_COLORS[code];
-              }
-            }
-          }
-          // Non-SGR groups (2–4): intentionally dropped.
+      function fitTerminal() {
+        try {
+          fit.fit();
+        } catch (_) {
+          /* container not measurable yet */
         }
-        flush(input.length);
-        return html;
       }
+      fitTerminal();
+      window.addEventListener("resize", fitTerminal);
+      window.addEventListener("orientationchange", () =>
+        setTimeout(fitTerminal, 200),
+      );
+
+      term.writeln("Waiting for connection…");
+      term.writeln(
+        "Connect this phone to the same Wi-Fi as your laptop, then scan",
+      );
+      term.writeln("the QR code shown in the terminal.");
 
       // ---- DOM refs --------------------------------------------------------
-      const logEl = document.getElementById("log");
       const dotEl = document.getElementById("dot");
       const fileEl = document.getElementById("file");
-      const statusEl = document.getElementById("status");
       const clearBtn = document.getElementById("clear");
-      const autoEl = document.getElementById("autoscroll");
-      const pills = Array.from(document.querySelectorAll(".pill"));
-
-      let autoScroll = true;
-      let filter = "ALL";
-
-      // ---- Helpers ---------------------------------------------------------
-      function levelOf(line) {
-        if (/\b(error|err|fatal|exception|failed)\b/i.test(line)) return "ERROR";
-        if (/\b(warn|warning)\b/i.test(line)) return "WARN";
-        return "INFO";
-      }
-
-      function showStatus(msg) {
-        statusEl.textContent = msg;
-        statusEl.classList.add("show");
-        clearTimeout(showStatus._t);
-        showStatus._t = setTimeout(() => statusEl.classList.remove("show"), 1500);
-      }
-
-      function atBottom() {
-        return logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
-      }
-
-      function appendLine(text) {
-        // Remove the very first banner once real data arrives.
-        const banner = logEl.querySelector(".banner");
-        if (banner) banner.remove();
-
-        const lvl = levelOf(text);
-        const div = document.createElement("div");
-        div.className = "line lvl-" + lvl.toLowerCase();
-        if (filter !== "ALL" && filter !== lvl) div.classList.add("hidden");
-        div.innerHTML = ansiToHtml(text);
-        logEl.appendChild(div);
-
-        // Cap DOM size to keep the page snappy during long sessions.
-        if (logEl.childElementCount > 5000) {
-          logEl.removeChild(logEl.firstElementChild);
-        }
-
-        if (autoScroll && atBottom()) {
-          logEl.scrollTop = logEl.scrollHeight;
-        }
-      }
-
-      function applyFilter() {
-        for (const el of logEl.children) {
-          if (!el.classList.contains("line")) continue;
-          const lvl = el.classList.contains("lvl-error")
-            ? "ERROR"
-            : el.classList.contains("lvl-warn")
-            ? "WARN"
-            : "INFO";
-          el.classList.toggle("hidden", filter !== "ALL" && filter !== lvl);
-        }
-        if (autoScroll) logEl.scrollTop = logEl.scrollHeight;
-      }
 
       // ---- Controls --------------------------------------------------------
-      clearBtn.addEventListener("click", () => {
-        logEl.innerHTML = "";
-        showStatus("Cleared");
-      });
-
-      autoEl.addEventListener("click", () => {
-        autoScroll = !autoScroll;
-        autoEl.classList.toggle("on", autoScroll);
-        if (autoScroll) logEl.scrollTop = logEl.scrollHeight;
-      });
-
-      for (const pill of pills) {
-        pill.addEventListener("click", () => {
-          filter = pill.dataset.level;
-          for (const p of pills) p.classList.toggle("active", p === pill);
-          applyFilter();
-        });
-      }
+      clearBtn.addEventListener("click", () => term.clear());
 
       // ---- WebSocket (with auto-reconnect) --------------------------------
       let ws = null;
@@ -460,11 +211,7 @@
           return;
         }
 
-        ws.onopen = () => {
-          setDot("online");
-          showStatus("Connected");
-        };
-
+        ws.onopen = () => setDot("online");
         ws.onmessage = (ev) => {
           let msg;
           try {
@@ -475,18 +222,17 @@
           if (msg.type === "meta") {
             fileEl.textContent = msg.file || "";
           } else if (msg.type === "line") {
-            appendLine(msg.text);
+            term.write(msg.text);
           }
         };
-
         ws.onclose = () => {
           setDot("offline");
-          showStatus("Disconnected — retrying…");
           scheduleReconnect();
         };
-
         ws.onerror = () => {
-          try { ws.close(); } catch {}
+          try {
+            ws.close();
+          } catch (_) {}
         };
       }
 

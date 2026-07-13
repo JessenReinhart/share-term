@@ -29,7 +29,6 @@ function defaultShell(): string {
  */
 export class PtySource implements LogSource {
   private proc?: pty.IPty;
-  private buffer = "";
 
   constructor(private readonly opts: PtyOptions = {}) {}
 
@@ -51,16 +50,10 @@ export class PtySource implements LogSource {
       // Mirror to the laptop so the user still sees their live shell.
       if (process.stdout.writable) process.stdout.write(data);
 
-      // Extract complete lines for the phone (escapes stay within a line).
-      // PTY output uses CRLF; drop the trailing CR so the phone renders clean.
-      this.buffer += data;
-      let idx: number;
-      while ((idx = this.buffer.indexOf("\n")) >= 0) {
-        let line = this.buffer.slice(0, idx);
-        if (line.endsWith("\r")) line = line.slice(0, -1);
-        this.buffer = this.buffer.slice(idx + 1);
-        onLine(line);
-      }
+      // Forward the raw chunk unchanged. The phone renders a real terminal
+      // emulator, so cursor moves / prompts (which have no trailing newline)
+      // must be streamed as-is to appear instantly.
+      onLine(data);
     });
 
     // When the shell exits, tear everything down.

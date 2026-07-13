@@ -108,8 +108,15 @@ async function main(): Promise<void> {
   }
 
   // Begin producing lines and pipe them into the broadcast layer.
-  await source.instance.start((line) =>
-    server.broadcast({ type: "line", text: line }),
+  // PTY mode streams raw chunks (prompts have no newline) so the phone's
+  // terminal emulator renders them instantly; other sources are line-based,
+  // so we re-append the newline they were split on.
+  const appendNewline = !source.raw;
+  await source.instance.start((chunk) =>
+    server.broadcast({
+      type: "line",
+      text: appendNewline ? chunk + "\n" : chunk,
+    }),
   );
 
   const shutdown = (signal: string) => {
@@ -140,7 +147,7 @@ function waitForEnter(): Promise<void> {
  */
 async function chooseSource(
   cwd: string,
-): Promise<{ instance: LogSource; label: string; takesTerminal?: boolean }> {
+): Promise<{ instance: LogSource; label: string; takesTerminal?: boolean; raw?: boolean }> {
   // Auto-detect piping: `some-command | share-term`
   if (!process.stdin.isTTY) {
     p.log.info("stdin is piped — entering Manual Input (Pipe) mode.");
@@ -218,6 +225,7 @@ async function chooseSource(
       instance: new PtySource(),
       label: "live terminal",
       takesTerminal: true,
+      raw: true,
     };
   }
 

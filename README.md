@@ -32,9 +32,12 @@ $ share-term
 - **Automatic LAN IP detection** — uses your real Wi-Fi IP, not `127.0.0.1`.
 - **QR code in the terminal** (no app install needed on the laptop).
 - **Zero-config PWA receiver** — a single responsive HTML file served from the CLI.
-- **ANSI color rendering** on the phone (custom SGR parser, no CDN needed).
+- **Full terminal emulation on the phone** via `xterm.js` (vendored locally, no
+  CDN) — cursor movement, colors, and layout render exactly like a real
+  terminal, not just a colorized log.
+- **ANSI color rendering** on the phone (real SGR, 256-color aware).
 - **`tail -f` style watching** via `chokidar` — streams only appended bytes (low CPU).
-- **Phone-side UX**: auto-scroll toggle, clear button, `INFO`/`WARN`/`ERROR` filter pills.
+- **Phone-side**: Clear button, live connection indicator, auto-reconnect.
 - **Graceful handling** of phone disconnects, file rotation, and port conflicts.
 
 > The only third-party runtime dependency for live terminal sharing is
