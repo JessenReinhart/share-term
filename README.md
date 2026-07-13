@@ -67,10 +67,10 @@ with `tsx`, no build step).
 
 ```bash
 # Share a specific command's output directly (no picker needed):
-share-term sprint                 # runs `sprint` in a PTY and streams it
-share-term npm run dev            # or any command
+share-term npm run dev            # runs the command in a PTY and streams it
+share-term "node server.js"       # or any command
 # A bare name that matches an npm script in package.json is auto-expanded:
-share-term sprint                 # → expands to `npm run sprint` if "sprint" is a script
+share-term dev                    # → expands to `npm run dev` if "dev" is a script
 
 # Interactive picker (default when no command is given):
 share-term
