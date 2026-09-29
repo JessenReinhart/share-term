@@ -8,9 +8,13 @@ export interface ServerOptions {
   publicDir: string;
   /** TCP port to listen on. */
   port: number;
+  /** Optional session token for authentication. */
+  token?: string;
   /** Called once per newly connected phone client. */
   onConnection?: (ws: WebSocket) => void;
 }
+
+export type ShareServerOptions = ServerOptions;
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -44,7 +48,23 @@ export class ShareServer {
     this.server = http.createServer((req, res) =>
       this.handleRequest(req, res),
     );
-    this.wss = new WebSocketServer({ server: this.server });
+    this.wss = new WebSocketServer({ noServer: true });
+
+    this.server.on("upgrade", (req, socket, head) => {
+      if (this.opts.token) {
+        const url = new URL(req.url ?? "/", "http://localhost");
+        const token = url.searchParams.get("token");
+        if (token !== this.opts.token) {
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+      }
+
+      this.wss.handleUpgrade(req, socket, head, (ws) => {
+        this.wss.emit("connection", ws, req);
+      });
+    });
 
     this.wss.on("connection", (ws) => {
       this.clients.add(ws);
@@ -106,17 +126,32 @@ export class ShareServer {
 
   /** Number of currently connected phone clients. */
   get clientCount(): number {
-    return this.clients.size;
+    let count = 0;
+    for (const ws of this.clients) {
+      if (ws.readyState === WebSocket.OPEN) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /** Serve a static file from `publicDir`, preventing path traversal. */
   private handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (this.opts.token) {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const token = url.searchParams.get("token");
+      if (token !== this.opts.token) {
+        res.writeHead(401, { "Content-Type": "text/plain" });
+        res.end("Unauthorized");
+        return;
+      }
+    }
+
     const urlPath = (req.url ?? "/").split("?")[0] || "/";
     const decoded = decodeURIComponent(urlPath);
     // Root → index.html; otherwise drop leading slashes (OS-agnostic).
     const rel = decoded === "/" ? "index.html" : decoded.replace(/^\/+/, "");
-    // Strip any leading "../" sequences to prevent directory traversal.
-    const normalized = path.normalize(rel).replace(/^(\.\.[/\\])+/, "");
+    const normalized = path.normalize(rel);
     const filePath = path.join(this.opts.publicDir, normalized);
 
     // Guard against escaping the public directory.
@@ -134,7 +169,15 @@ export class ShareServer {
         return;
       }
       const ext = path.extname(filePath).toLowerCase();
-      res.writeHead(200, { "Content-Type": MIME[ext] ?? "application/octet-stream" });
+      const headers: Record<string, string> = {
+        "Content-Type": MIME[ext] ?? "application/octet-stream",
+      };
+
+      if (urlPath.startsWith("/vendor/")) {
+        headers["Cache-Control"] = "public, max-age=3600";
+      }
+
+      res.writeHead(200, headers);
       res.end(content);
     });
   }

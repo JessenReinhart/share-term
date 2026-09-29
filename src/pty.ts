@@ -1,4 +1,5 @@
 import process from "node:process";
+import { StringDecoder } from "node:string_decoder";
 import * as pty from "node-pty";
 
 import type { LogSource } from "./watcher.js";
@@ -36,6 +37,9 @@ export class PtySource implements LogSource {
   /** Report the live PTY size so the phone can render at the true width. */
   onSize?: (cols: number, rows: number) => void;
 
+  /** Registered shutdown callback invoked when the PTY process exits. */
+  onExit?: () => void;
+
   constructor(private readonly opts: PtyOptions = {}) {}
 
   async start(onLine: (line: string) => void): Promise<void> {
@@ -72,15 +76,20 @@ export class PtySource implements LogSource {
     // When the shell exits, tear everything down.
     this.proc.onExit(() => {
       this.stop();
-      process.exit(0);
+      this.onExit?.();
     });
 
     // Forward laptop keystrokes into the shell (only when we own a TTY).
     if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
+      try {
+        process.stdin.setRawMode(true);
+      } catch {
+        /* ignore */
+      }
       process.stdin.resume();
+      const decoder = new StringDecoder("utf8");
       process.stdin.on("data", (chunk: Buffer) => {
-        this.proc?.write(chunk.toString("utf8"));
+        this.proc?.write(decoder.write(chunk));
       });
       process.stdout.on("resize", () => {
         const c = process.stdout.columns ?? 80;

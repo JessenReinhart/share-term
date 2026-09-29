@@ -6,9 +6,12 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=yes"
     />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#0b0e14" />
     <meta name="color-scheme" content="dark" />
     <title>share-term</title>
+    <link rel="manifest" href="data:application/json,%7B%22name%22%3A%22share-term%22%2C%22short_name%22%3A%22share-term%22%2C%22display%22%3A%22fullscreen%22%2C%22background_color%22%3A%22%23000%22%2C%22theme_color%22%3A%22%23000%22%7D" />
     <link rel="stylesheet" href="/vendor/xterm.css" />
     <style>
       :root {
@@ -190,16 +193,22 @@
         const baseCols = dims && dims.cols ? dims.cols : cols;
         // 2. Scale the font so `cols` columns fill the screen width exactly.
         let next = base * (baseCols / cols) * 0.97;
-        next = Math.max(4, Math.min(28, next));
+        next = Math.max(8, Math.min(28, next));
         term.options.fontSize = next;
         // 3. Fit again: rows now fill the available height, no horizontal wrap.
         fit.fit();
       }
       fitTerminal();
       window.addEventListener("resize", fitTerminal);
-      window.addEventListener("orientationchange", () =>
-        setTimeout(fitTerminal, 200),
-      );
+      if (screen && screen.orientation && screen.orientation.addEventListener) {
+        screen.orientation.addEventListener("change", () =>
+          setTimeout(fitTerminal, 200),
+        );
+      } else {
+        window.addEventListener("orientationchange", () =>
+          setTimeout(fitTerminal, 200),
+        );
+      }
 
       term.writeln("Waiting for connection…");
       term.writeln(
@@ -243,8 +252,8 @@
           fabMoved = true;
         }
         if (!fabMoved) return;
-        const w = window.innerWidth;
-        const h = window.innerHeight;
+        const w = document.documentElement.clientWidth;
+        const h = document.documentElement.clientHeight;
         let x = e.clientX - fabOffX;
         let y = e.clientY - fabOffY;
         x = Math.max(0, Math.min(w - fab.offsetWidth, x));
@@ -270,9 +279,10 @@
       // ---- WebSocket (with auto-reconnect) --------------------------------
       let ws = null;
       let reconnectTimer = null;
+      let reconnectDelay = 1000;
 
       function setDot(state) {
-        dotEl.className = "dot " + state;
+        dotEl.className = "status-dot " + state;
       }
 
       function connect() {
@@ -287,7 +297,10 @@
           return;
         }
 
-        ws.onopen = () => setDot("online");
+        ws.onopen = () => {
+          reconnectDelay = 1000;
+          setDot("online");
+        };
         ws.onmessage = (ev) => {
           let msg;
           try {
@@ -298,7 +311,7 @@
           if (msg.type === "meta") {
             // filename previously shown in the navbar; intentionally dropped.
           } else if (msg.type === "size") {
-            targetCols = msg.cols || 0;
+            targetCols = msg.cols ?? 0;
             fitTerminal();
           } else if (msg.type === "line") {
             term.write(msg.text);
@@ -317,10 +330,12 @@
 
       function scheduleReconnect() {
         if (reconnectTimer) return;
+        const delay = Math.min(30000, reconnectDelay) + Math.random() * 500;
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           connect();
-        }, 1500);
+        }, delay);
+        reconnectDelay = Math.min(30000, reconnectDelay * 2);
       }
 
       connect();

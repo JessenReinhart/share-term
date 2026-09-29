@@ -16,6 +16,9 @@ const files = [
 
 for (const [src, dest] of files) {
   const from = path.join(root, "node_modules", src);
+  if (!fs.existsSync(from)) {
+    throw new Error("Missing vendor source: " + from + ". Run 'npm install' first.");
+  }
   fs.copyFileSync(from, path.join(vendor, dest));
 }
 console.log("Vendored xterm.js + addon-fit into public/vendor");

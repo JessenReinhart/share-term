@@ -14,6 +14,9 @@ import fs from "node:fs";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
+import crypto from "node:crypto";
+import { parseArgs } from "node:util";
+import { createRequire } from "node:module";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import getPort from "get-port";
@@ -30,6 +33,9 @@ import {
 } from "./watcher.js";
 import { TmuxSessionSource, findTerminalSessions } from "./sessions.js";
 import { PtySource } from "./pty.js";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -61,16 +67,21 @@ const PIPE_VALUE = "__pipe__";
  * as a command to run and share. A bare script name that matches an npm script
  * in the cwd is expanded to `npm run <script>` for convenience.
  */
-async function resolveCommandArg(): Promise<string | null> {
-  const positional = process.argv.slice(2).filter((a) => !a.startsWith("-"));
+async function resolveCommandArg(positional: string[]): Promise<string | null> {
   if (positional.length === 0) return null;
   const raw = positional.join(" ");
   if (positional.length === 1) {
     try {
-      const pkg = JSON.parse(
+      const localPkg = JSON.parse(
         await fs.promises.readFile(path.join(process.cwd(), "package.json"), "utf8"),
       );
-      if (pkg.scripts && pkg.scripts[positional[0]]) return `npm run ${positional[0]}`;
+      if (
+        typeof localPkg.scripts === "object" &&
+        localPkg.scripts !== null &&
+        localPkg.scripts[positional[0]]
+      ) {
+        return `npm run ${positional[0]}`;
+      }
     } catch {
       /* no package.json / not JSON — run the arg verbatim */
     }
@@ -79,13 +90,29 @@ async function resolveCommandArg(): Promise<string | null> {
 }
 
 async function main(): Promise<void> {
+  const { values, positionals } = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      port: { type: "string" },
+      host: { type: "string" },
+      "no-qr": { type: "boolean", default: false },
+      token: { type: "string" },
+    },
+    allowPositionals: true,
+  });
+
+  const parsedPort = values.port ? parseInt(values.port, 10) : undefined;
+  const customHost = values.host;
+  const skipQr = values["no-qr"] ?? false;
+  const token = values.token || crypto.randomUUID();
+
   disableInputModes();
-  p.intro(pc.bgBlue(pc.white(" share-term ")) + pc.dim("  v1.0.0"));
+  p.intro(pc.bgBlue(pc.white(" share-term ")) + pc.dim(`  v${pkg.version}`));
 
   const cwd = process.cwd();
 
   // `share-term <command>` → share that command's output directly (no picker).
-  const command = await resolveCommandArg();
+  const command = await resolveCommandArg(positionals);
   const source = command
     ? {
         instance: new PtySource({ command }),
@@ -95,10 +122,10 @@ async function main(): Promise<void> {
       }
     : await chooseSource(cwd);
 
-  // Pick an available port (falls back from 8080 if busy).
-  const port = await getPort({ port: 8080 });
+  // Pick an available port (falls back from parsedPort or 8080 if busy).
+  const port = await getPort({ port: parsedPort ?? 8080 });
 
-  const ip = getLocalIp();
+  const ip = customHost ?? getLocalIp();
   if (!ip) {
     p.cancel(
       "Could not detect a local network IP. Connect to Wi-Fi or pass one explicitly.",
@@ -106,9 +133,24 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const url = `http://${ip}:${port}`;
+  const queryParams = token ? `?token=${encodeURIComponent(token)}` : "";
+  const url = `http://${ip}:${port}${queryParams}`;
 
-  const server = new ShareServer({ publicDir: PUBLIC_DIR, port });
+  const replayBuffer: string[] = [];
+
+  const server = new ShareServer({
+    publicDir: PUBLIC_DIR,
+    port,
+    onConnection: (ws) => {
+      for (const line of replayBuffer) {
+        try {
+          ws.send(JSON.stringify({ type: "line", text: line }));
+        } catch {
+          /* ignore dropped socket */
+        }
+      }
+    },
+  });
   await server.start();
 
   // Tell each phone what it's looking at.
@@ -121,9 +163,11 @@ async function main(): Promise<void> {
     `${pc.cyan(url)}\n\nScan the QR code below with your phone camera.`,
     "Server ready",
   );
-  console.log();
-  renderQr(url);
-  console.log();
+  if (!skipQr) {
+    console.log();
+    renderQr(url);
+    console.log();
+  }
 
   // For a live PTY shell we take over the terminal *after* the QR is shown — a
   // spawned shell clears the screen on start, so we wait for the user to scan
@@ -153,13 +197,6 @@ async function main(): Promise<void> {
       server.broadcast({ type: "size", cols, rows });
   }
 
-  await source.instance.start((chunk) =>
-    server.broadcast({
-      type: "line",
-      text: appendNewline ? chunk + "\n" : chunk,
-    }),
-  );
-
   const shutdown = (signal: string) => {
     p.outro(`${pc.yellow("Received " + signal)} — stopping share-term.`);
     restoreTerminal();
@@ -169,6 +206,22 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+  if (source.instance instanceof PtySource) {
+    source.instance.onExit = () => shutdown("PTY exit");
+  }
+
+  await source.instance.start((chunk) => {
+    const text = appendNewline ? chunk + "\n" : chunk;
+    replayBuffer.push(text);
+    if (replayBuffer.length > 500) {
+      replayBuffer.shift();
+    }
+    server.broadcast({
+      type: "line",
+      text,
+    });
+  });
 }
 
 /** Block until the user presses Enter (used to let them scan the QR first). */

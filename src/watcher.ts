@@ -19,6 +19,7 @@ export interface LogSource {
 
 const CHUNK_SIZE = 64 * 1024; // 64 KiB read window for the initial tail.
 const INITIAL_TAIL_LINES = 200; // How many historical lines to replay on connect.
+const MAX_BUFFER = 1024 * 1024; // 1 MiB cap on buffered partial lines.
 
 /**
  * Tails a file using a `tail -f` equivalent:
@@ -41,9 +42,7 @@ export class FileTailer implements LogSource {
     await this.replayTail();
     this.watcher = chokidar.watch(this.filePath, { ignoreInitial: true });
     this.watcher.on("change", () => void this.readNew());
-    this.watcher.on("error", () => {
-      /* Ignore transient FS errors; chokidar will retry. */
-    });
+    this.watcher.on("error", (err) => process.stderr.write("chokidar: " + String(err) + "\n"));
   }
 
   /** Read and emit the last {@link INITIAL_TAIL_LINES} lines of the file. */
@@ -57,10 +56,10 @@ export class FileTailer implements LogSource {
       const { bytesRead } = await fd.read(buf, 0, buf.length, start);
       await fd.close();
 
-      const tail = buf.slice(0, bytesRead).toString("utf8");
+      const tail = buf.subarray(0, bytesRead).toString("utf8");
       const lines = tail.split("\n").slice(-INITIAL_TAIL_LINES);
       for (const line of lines) {
-        if (line.length) this.onLine(line);
+        this.onLine(line);
       }
       this.lastSize = size;
     } catch {
@@ -89,12 +88,15 @@ export class FileTailer implements LogSource {
       await fd.close();
       this.lastSize = stat.size;
 
-      this.buffer += buf.slice(0, bytesRead).toString("utf8");
+      this.buffer += buf.subarray(0, bytesRead).toString("utf8");
+      if (this.buffer.length > MAX_BUFFER) {
+        this.buffer = this.buffer.slice(this.buffer.length - MAX_BUFFER);
+      }
       let idx: number;
       while ((idx = this.buffer.indexOf("\n")) >= 0) {
         const line = this.buffer.slice(0, idx);
         this.buffer = this.buffer.slice(idx + 1);
-        if (line.length) this.onLine(line);
+        this.onLine(line);
       }
     } catch {
       /* File momentarily unavailable; ignore. */
@@ -166,9 +168,6 @@ export async function findLogFiles(cwd: string, max = 200): Promise<string[]> {
     }
 
     for (const entry of entries) {
-      if (entry.name === ".log") {
-        // top-level bare ".log" file is valid; handled below
-      }
       if (entry.name.startsWith(".") && entry.name !== ".log") continue;
 
       const full = path.join(dir, entry.name);

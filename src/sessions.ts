@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile, execFileSync, type ExecFileOptionsWithStringEncoding } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 
 import { FileTailer, type LogSource } from "./watcher.js";
@@ -22,7 +23,7 @@ function tmuxExec(
   bin: string,
   args: string[],
 ): Promise<{ stdout: string; stderr: string }> {
-  const isScript = /\.(cmd|bat|com)$/i.test(bin);
+  const isScript = /\.(cmd|bat)$/i.test(bin);
   return execFileP(bin, args, { ...EXEC_OPTS, shell: isScript });
 }
 
@@ -132,7 +133,7 @@ export class TmuxSessionSource implements LogSource {
       console.warn("tmux is no longer available; cannot stream this session.");
       return;
     }
-    const tmp = path.join(os.tmpdir(), `share-term-${process.pid}-${Date.now()}.log`);
+    const tmp = path.join(os.tmpdir(), `share-term-${randomUUID()}.log`);
     fs.writeFileSync(tmp, "");
     this.tmpFile = tmp;
 
@@ -146,7 +147,9 @@ export class TmuxSessionSource implements LogSource {
         "-t",
         this.target,
       ]);
-      for (const line of stdout.split("\n")) onLine(line);
+      if (stdout) {
+        onLine(stdout);
+      }
     } catch {
       /* Pane may have vanished; we'll still stream live output if any. */
     }
@@ -172,11 +175,16 @@ export class TmuxSessionSource implements LogSource {
     // Detach the pipe sink (no command = disable).
     try {
       const bin = tmuxBin;
-      if (bin)
-        execFileSync(bin, ["pipe-pane", "-o", "-t", this.target], {
-          ...EXEC_OPTS,
-          shell: /\.(cmd|bat|com)$/i.test(bin),
-        });
+      if (bin) {
+        try {
+          execFileSync(bin, ["pipe-pane", "-o", "-t", this.target], {
+            ...EXEC_OPTS,
+            shell: /\.(cmd|bat)$/i.test(bin),
+          });
+        } catch {
+          /* ignore — tmux execution failed */
+        }
+      }
     } catch {
       /* ignore — tmux may already be gone */
     }
